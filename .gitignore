@@ -14,3 +14,6 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Firebase CLI cache (created by firebase deploy; not source code)
+.firebase/

@@ -10,11 +10,12 @@ import { Savings } from './screens/Savings';
 import { EMPTY_FILTERS, type Filters } from './lib/filters';
 
 export default function App() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [tab, setTab] = useState<Tab>('home');
   const [adding, setAdding] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
+  if (loading) return <div className="loading">Loading…</div>;
   if (!user) return <Login />;
 
   // Opens Payments with the given filters applied.

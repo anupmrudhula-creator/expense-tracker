@@ -1,14 +1,8 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useReducer,
-  type Dispatch,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { collection, deleteDoc, doc, onSnapshot, setDoc, writeBatch } from 'firebase/firestore';
+import { useAuth } from '../auth/AuthContext';
+import { db, HOUSEHOLD } from '../lib/firebase';
 import type { AppData, Bill, BillPayment, Deposit, Expense, Plan, Settlement, Source } from './types';
-
-const STORAGE_KEY = 'expense-tracker:data:v1';
 
 export type Action =
   | { type: 'addSource'; source: Source }
@@ -20,106 +14,88 @@ export type Action =
   | { type: 'addPlan'; plan: Plan }
   | { type: 'addDeposit'; deposit: Deposit };
 
-function reducer(state: AppData, action: Action): AppData {
+type Key = keyof AppData;
+
+const KEYS: Key[] = ['sources', 'expenses', 'bills', 'billPayments', 'settlements', 'plans', 'deposits'];
+
+const EMPTY: AppData = {
+  sources: [],
+  expenses: [],
+  bills: [],
+  billPayments: [],
+  settlements: [],
+  plans: [],
+  deposits: [],
+};
+
+// Firestore rejects undefined fields, so strip them before saving.
+const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
+const ref = (key: Key, id: string) => doc(db, `${HOUSEHOLD}/${key}/${id}`);
+
+async function apply(action: Action): Promise<void> {
   switch (action.type) {
     case 'addSource':
-      return { ...state, sources: [...state.sources, action.source] };
+      return setDoc(ref('sources', action.source.id), clean(action.source));
     case 'settleCard':
-      return { ...state, settlements: [...state.settlements, action.settlement] };
+      return setDoc(ref('settlements', action.settlement.id), clean(action.settlement));
     case 'addExpense':
-      return { ...state, expenses: [action.expense, ...state.expenses] };
+      return setDoc(ref('expenses', action.expense.id), clean(action.expense));
     case 'addBill':
-      return { ...state, bills: [...state.bills, action.bill] };
-    case 'payBill':
-      return {
-        ...state,
-        billPayments: [...state.billPayments, action.payment],
-        expenses: [action.expense, ...state.expenses],
-      };
-    case 'unpayBill':
-      return {
-        ...state,
-        billPayments: state.billPayments.filter((p) => p.id !== action.paymentId),
-        expenses: state.expenses.filter((e) => e.id !== action.expenseId),
-      };
+      return setDoc(ref('bills', action.bill.id), clean(action.bill));
     case 'addPlan':
-      return { ...state, plans: [...state.plans, action.plan] };
+      return setDoc(ref('plans', action.plan.id), clean(action.plan));
     case 'addDeposit':
-      return { ...state, deposits: [action.deposit, ...state.deposits] };
-  }
-}
-
-// Sample data so the screens have something to show on first run.
-// Dates are relative to now, so the demo always looks current.
-function seed(): AppData {
-  const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
-  return {
-    sources: [
-      { id: 's-anup-cc', kind: 'credit_card', label: 'Credit card', owner: 'anup', last4: '4821' },
-      { id: 's-mru-cc', kind: 'credit_card', label: 'Credit card', owner: 'mrudhula', last4: '9034' },
-      { id: 's-joint-bank', kind: 'bank_account', label: 'Joint savings', owner: 'joint', last4: '1187' },
-    ],
-    expenses: [
-      { id: 'e1', amountMinor: 245000, date: ago(1), merchant: 'Big Basket', category: 'Groceries', sourceId: 's-joint-bank', mode: 'upi', paidBy: 'joint', enteredBy: 'mrudhula' },
-      { id: 'e2', amountMinor: 89900, date: ago(2), merchant: 'Swiggy', category: 'Restaurants', sourceId: 's-anup-cc', mode: 'credit_card', paidBy: 'anup', enteredBy: 'anup' },
-      { id: 'e3', amountMinor: 152000, date: ago(4), merchant: 'Reliance Digital', category: 'Offline shopping', sourceId: 's-mru-cc', mode: 'credit_card', paidBy: 'mrudhula', enteredBy: 'anup' },
-      { id: 'e4', amountMinor: 60000, date: ago(6), merchant: 'Indian Oil', category: 'Fuel', sourceId: 's-anup-cc', mode: 'credit_card', paidBy: 'anup', enteredBy: 'anup' },
-      { id: 'e5', amountMinor: 45000, date: ago(9), merchant: 'Cafe', category: 'Restaurants', sourceId: null, mode: 'cash', paidBy: 'mrudhula', enteredBy: 'mrudhula' },
-    ],
-    bills: [
-      { id: 'b1', name: 'Rent', expectedMinor: 2500000, dueDay: 5, payer: 'joint', sourceId: 's-joint-bank' },
-      { id: 'b2', name: 'Cook', expectedMinor: 300000, dueDay: 1, payer: 'anup', sourceId: null },
-      { id: 'b3', name: 'Maid', expectedMinor: 200000, dueDay: 1, payer: 'mrudhula', sourceId: null },
-      { id: 'b4', name: 'Electricity', expectedMinor: 180000, dueDay: 12, payer: 'anup', sourceId: 's-anup-cc' },
-    ],
-    billPayments: [],
-    settlements: [],
-    plans: [
-      { id: 'p1', name: 'PPF', type: 'PPF', frequency: 'yearly', amountMinor: 15000000, owner: 'anup' },
-      { id: 'p2', name: 'Index fund SIP', type: 'Mutual fund', frequency: 'monthly', amountMinor: 1000000, owner: 'mrudhula' },
-    ],
-    deposits: [],
-  };
-}
-
-// Keep false for real use. Set to true only if you want the sample data for a demo.
-const USE_SAMPLE_DATA = false;
-
-function emptyData(): AppData {
-  return { sources: [], expenses: [], bills: [], billPayments: [], settlements: [], plans: [], deposits: [] };
-}
-
-function load(): AppData {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    // Data saved before settlements existed has no such field, so default it.
-    if (raw) {
-      const saved = JSON.parse(raw) as Partial<AppData>;
-      return { ...saved, settlements: saved.settlements ?? [] } as AppData;
+      return setDoc(ref('deposits', action.deposit.id), clean(action.deposit));
+    case 'payBill': {
+      // The payment record and the expense it creates are saved together, or not at all.
+      const batch = writeBatch(db);
+      batch.set(ref('billPayments', action.payment.id), clean(action.payment));
+      batch.set(ref('expenses', action.expense.id), clean(action.expense));
+      return batch.commit();
     }
-  } catch {
-    // Corrupt or blocked storage: start empty.
+    case 'unpayBill': {
+      const batch = writeBatch(db);
+      batch.delete(ref('billPayments', action.paymentId));
+      batch.delete(ref('expenses', action.expenseId));
+      return batch.commit();
+    }
   }
-  return USE_SAMPLE_DATA ? seed() : emptyData();
 }
 
 interface StoreValue {
   data: AppData;
-  dispatch: Dispatch<Action>;
+  dispatch: (action: Action) => void;
 }
 
 const StoreCtx = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, dispatch] = useReducer(reducer, undefined, load);
+  const { user } = useAuth();
+  const [data, setData] = useState<AppData>(EMPTY);
 
+  // Live updates: every change from either phone appears on the other straight away.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      // Storage full or blocked: data lives only in memory for this session.
+    if (!user) {
+      setData(EMPTY);
+      return;
     }
-  }, [data]);
+    const unsubscribers = KEYS.map((key) =>
+      onSnapshot(collection(db, `${HOUSEHOLD}/${key}`), (snap) => {
+        const rows = snap.docs.map((d) => d.data());
+        setData((prev) => ({ ...prev, [key]: rows }));
+      }),
+    );
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [user]);
+
+  const dispatch = (action: Action) => {
+    // Writes go to Firestore. The live listener above updates the screens once they're saved.
+    apply(action).catch((error) => {
+      console.error('Save failed', error);
+      alert('Could not save. Check your connection and try again.');
+    });
+  };
 
   return <StoreCtx.Provider value={{ data, dispatch }}>{children}</StoreCtx.Provider>;
 }
@@ -130,7 +106,10 @@ export function useStore(): StoreValue {
   return value;
 }
 
-// crypto.randomUUID needs a secure context, which a LAN address over http is not.
+// IDs are generated on this device, so two phones can add entries without clashing.
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
+
+// Kept for any screen that wants to delete a single expense later.
+export const removeExpense = (id: string) => deleteDoc(ref('expenses', id));

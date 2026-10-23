@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { ArrowRight, Lock, User, Wallet } from 'lucide-react';
+import { ArrowRight, Lock, Mail, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 export function Login() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!login(username, password)) setError('Wrong username or password');
+    setBusy(true);
+    const message = await login(email, password);
+    setError(message ?? '');
+    setBusy(false);
   };
 
   return (
@@ -25,14 +29,15 @@ export function Login() {
 
       <form className="login-card" onSubmit={submit}>
         <label className="search">
-          <User size={18} />
+          <Mail size={18} />
           <input
             className="bare"
+            type="email"
             autoComplete="username"
             autoCapitalize="none"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </label>
         <label className="search">
@@ -47,8 +52,8 @@ export function Login() {
           />
         </label>
         {error && <p className="error">{error}</p>}
-        <button className="primary" type="submit">
-          Sign in <ArrowRight size={18} />
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={18} />
         </button>
       </form>
     </main>

@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// Only the two household members can read or write anything.
+// A member is a document at households/main/members/{their login UID} with a "person" field.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function member() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/households/main/members/$(request.auth.uid));
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/households/main/members/$(request.auth.uid)).data.person;
+    }
+
+    // Member list is managed from the Firebase console only.
+    match /households/main/members/{uid} {
+      allow read: if member();
+      allow write: if false;
+    }
+
+    // Expenses must be recorded as the person who is logged in, and the amount must be a sensible value.
+    match /households/main/expenses/{id} {
+      allow read, delete: if member();
+      allow create, update: if member()
+        && request.resource.data.enteredBy == me()
+        && request.resource.data.amountMinor is int
+        && request.resource.data.amountMinor > 0
+        && request.resource.data.amountMinor < 100000000;
+    }
+
+    // Everything else is shared between the two members.
+    match /households/main/{collection}/{id} {
+      allow read, create, update, delete: if member()
+        && collection in ['sources', 'bills', 'billPayments', 'settlements', 'plans', 'deposits'];
+    }
+  }
+}

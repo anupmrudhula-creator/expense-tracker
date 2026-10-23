@@ -1668,3 +1668,12 @@ select:focus {
   padding: 12px 14px;
   box-shadow: var(--shadow);
 }
+
+/* ---------- Loading ---------- */
+
+.loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}

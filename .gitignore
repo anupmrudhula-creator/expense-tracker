@@ -13,3 +13,4 @@ dist/
 # Local env files (Firebase keys will go here later, never commit secrets)
 .env
 .env.*
+!.env.example

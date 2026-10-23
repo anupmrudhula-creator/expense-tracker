@@ -1,5 +1,5 @@
 import type { Source } from '../data/types';
-import { NETWORK_GRADIENT, NETWORK_LABEL } from '../lib/cardNetwork';
+import { bankBadge } from '../lib/banks';
 import { PEOPLE } from '../lib/labels';
 import { formatMoney } from '../lib/money';
 
@@ -8,17 +8,15 @@ interface CardVisualProps {
   spent: number; // this month's spend on the card, in paise
 }
 
-// A card face in the style of a payment app: issuer colour, network mark, last four digits.
+// A card face showing only the card name, in the colour of its bank.
 export function CardVisual({ source, spent }: CardVisualProps) {
-  const network = source.network ?? 'other';
+  const { color } = bankBadge(source.label);
   return (
-    <div className="credit-card" style={{ background: NETWORK_GRADIENT[network] }}>
+    <div className="credit-card" style={{ background: `linear-gradient(150deg, ${color}, #1f1b3a)` }}>
       <div className="cc-top">
         <span className="cc-bank">{source.label}</span>
-        <span className="cc-network">{NETWORK_LABEL[network]}</span>
       </div>
       <span className="cc-chip" aria-hidden="true" />
-      <span className="cc-number">•••• •••• •••• {source.last4 ?? '••••'}</span>
       <div className="cc-bottom">
         <div className="cc-col">
           <span className="cc-cap">Card holder</span>

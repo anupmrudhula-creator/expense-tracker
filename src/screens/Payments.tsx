@@ -10,7 +10,7 @@ import { totalOf } from '../lib/analysis';
 import { GROUP_COLOR, groupOf } from '../lib/categories';
 import { dayLabel } from '../lib/dates';
 import { activeFilterCount, applyFilters, PERIOD_LABEL, type Filters } from '../lib/filters';
-import { describeSource, MODE_LABEL, PEOPLE } from '../lib/labels';
+import { describeSource, describeSourceId, MODE_LABEL, PEOPLE } from '../lib/labels';
 import { formatMoney } from '../lib/money';
 import { CATEGORY_ICON, KIND_ICON } from '../ui/meta';
 import { Tile } from '../ui/Tile';
@@ -134,7 +134,7 @@ export function Payments({ filters, onChange }: PaymentsProps) {
                   <div className="row-main">
                     <span className="strong">{e.merchant || e.category}</span>
                     <span className="muted small meta-line">
-                      <SourceIcon size={12} /> {describeSource(source)}
+                      <SourceIcon size={12} /> {describeSourceId(data.sources, e.sourceId)}
                       {showMode && ` · ${MODE_LABEL[e.mode]}`}
                     </span>
                   </div>

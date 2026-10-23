@@ -1,27 +1,24 @@
 import { useState } from 'react';
-import { Check, ChevronRight, Plus } from 'lucide-react';
+import { Check, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { Sheet } from '../components/Sheet';
 import { Seg } from '../components/Seg';
-import type { Bill, BillPayment, Expense, PersonId, Source } from '../data/types';
+import type { Bill, BillPayment, Expense, PersonId, Settlement, Source } from '../data/types';
 import { newId, useStore } from '../data/store';
 import { useAuth } from '../auth/AuthContext';
-import { totalOf } from '../lib/analysis';
-import { DAY_MS, monthKey } from '../lib/dates';
-import { detectNetwork } from '../lib/cardNetwork';
 import { bankBadge } from '../lib/banks';
-import { formatMoney, parseMoney } from '../lib/money';
+import { totalOf } from '../lib/analysis';
+import { DAY_MS, dayLabel, monthKey } from '../lib/dates';
 import { MODES_FOR_KIND, PEOPLE, describeSource } from '../lib/labels';
+import { formatMoney, parseMoney } from '../lib/money';
 import { billIcon } from '../ui/meta';
 import { CardVisual } from '../ui/CardVisual';
-import { Tile } from '../ui/Tile';
 
-const BILL_COLOR = '#3b82f6';
-
-type TabId = 'cards' | 'fixed';
+type TabId = 'cards' | 'fixed' | 'history';
 
 const TABS: { value: TabId; label: string }[] = [
   { value: 'cards', label: 'Card bills' },
   { value: 'fixed', label: 'Fixed' },
+  { value: 'history', label: 'History' },
 ];
 
 export function Bills() {
@@ -32,13 +29,15 @@ export function Bills() {
       <header className="page-title">
         <div>
           <h1>Bills</h1>
-          <p className="muted small">{new Date().toLocaleDateString('en-IN', { month: 'long' })} · to settle and monthly</p>
+          <p className="muted small">{new Date().toLocaleDateString('en-IN', { month: 'long' })} · to settle, monthly and history</p>
         </div>
       </header>
 
       <Seg value={tab} options={TABS} onChange={setTab} />
 
-      {tab === 'cards' ? <CardBills /> : <FixedBills />}
+      {tab === 'cards' && <CardBills />}
+      {tab === 'fixed' && <FixedBills />}
+      {tab === 'history' && <History />}
     </>
   );
 }
@@ -60,7 +59,7 @@ function dueText(days: number): string {
 function CardBills() {
   const { data, dispatch } = useStore();
   const { user } = useAuth();
-  const [settling, setSettling] = useState<Source | null>(null);
+  const [selected, setSelected] = useState<Source | null>(null);
   const [adding, setAdding] = useState(false);
 
   const now = new Date();
@@ -80,11 +79,23 @@ function CardBills() {
 
   const settle = (source: Source, amountMinor: number) => {
     if (!user) return;
-    dispatch({
-      type: 'settleCard',
-      settlement: { id: newId(), sourceId: source.id, month, amountMinor, enteredBy: user.id, settledAt: new Date().toISOString() },
-    });
-    setSettling(null);
+    const settlement: Settlement = {
+      id: newId(),
+      sourceId: source.id,
+      month,
+      amountMinor,
+      enteredBy: user.id,
+      settledAt: new Date().toISOString(),
+      cardLabel: source.label,
+    };
+    dispatch({ type: 'settleCard', settlement });
+    setSelected(null);
+  };
+
+  const removeCard = (source: Source) => {
+    if (!window.confirm(`Delete ${source.label}? Past payments stay in your history.`)) return;
+    dispatch({ type: 'deleteSource', id: source.id });
+    setSelected(null);
   };
 
   return (
@@ -104,16 +115,14 @@ function CardBills() {
           const days = r.source.dueDay ? daysUntil(r.source.dueDay, now) : null;
           const urgency = days === null ? 'muted' : days <= 3 ? 'due-hot' : days <= 7 ? 'due-warm' : 'muted';
           const shown = r.settled ? r.settled.amountMinor : r.spent;
-          const content = (
-            <>
+          return (
+            <button key={r.source.id} className="tap cc-row" onClick={() => setSelected(r.source)}>
               <span className="cc-thumb" style={{ background: badge.color }}>
                 {badge.text}
               </span>
               <span className="cc-info">
                 <span className="strong">{r.source.label}</span>
-                <span className="muted small">
-                  •••• {r.source.last4 ?? '••••'} · {PEOPLE[r.source.owner]}
-                </span>
+                <span className="muted small">{PEOPLE[r.source.owner]}</span>
               </span>
               <span className="cc-amt">
                 <span className="strong">{formatMoney(shown)}</span>
@@ -125,16 +134,7 @@ function CardBills() {
                   <span className="small muted">This month</span>
                 )}
               </span>
-              {!r.settled && <ChevronRight size={18} className="muted-icon" />}
-            </>
-          );
-          return r.settled ? (
-            <div key={r.source.id} className="cc-row">
-              {content}
-            </div>
-          ) : (
-            <button key={r.source.id} className="tap cc-row" onClick={() => setSettling(r.source)}>
-              {content}
+              <ChevronRight size={18} className="muted-icon" />
             </button>
           );
         })}
@@ -151,66 +151,80 @@ function CardBills() {
       </section>
 
       {adding && <AddCardSheet onClose={() => setAdding(false)} />}
-      {settling && (
-        <SettleSheet
-          source={settling}
-          spent={rows.find((r) => r.source.id === settling.id)?.spent ?? 0}
-          onClose={() => setSettling(null)}
-          onSave={(amountMinor) => settle(settling, amountMinor)}
+      {selected && (
+        <CardSheet
+          source={selected}
+          spent={rows.find((r) => r.source.id === selected.id)?.spent ?? 0}
+          settled={rows.find((r) => r.source.id === selected.id)?.settled}
+          onClose={() => setSelected(null)}
+          onSettle={(amountMinor) => settle(selected, amountMinor)}
+          onDelete={() => removeCard(selected)}
         />
       )}
     </>
   );
 }
 
-// Asks for the exact amount paid for this month's bill. The card's spend is shown for reference only.
-function SettleSheet({
+// Settle asks for the exact amount paid. Delete removes the card but keeps its past payments.
+function CardSheet({
   source,
   spent,
+  settled,
   onClose,
-  onSave,
+  onSettle,
+  onDelete,
 }: {
   source: Source;
   spent: number;
+  settled: Settlement | undefined;
   onClose: () => void;
-  onSave: (amountMinor: number) => void;
+  onSettle: (amountMinor: number) => void;
+  onDelete: () => void;
 }) {
   const [amount, setAmount] = useState('');
   const amountMinor = parseMoney(amount);
 
   return (
-    <Sheet title="Settle card bill" onClose={onClose}>
+    <Sheet title={source.label} onClose={onClose}>
       <CardVisual source={source} spent={spent} />
-      <div className="card form-card">
-        <span className="muted small">Amount you paid for this month's bill</span>
-        <div className="amount-field">
-          <span className="rupee">₹</span>
-          <input className="amount bare" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+
+      {settled ? (
+        <div className="card form-card">
+          <span className="muted small">Settled this month</span>
+          <span className="big-num">{formatMoney(settled.amountMinor)}</span>
         </div>
-        <span className="muted small">Card spend this month: {formatMoney(spent)}</span>
-      </div>
-      <button className="primary" disabled={amountMinor <= 0} onClick={() => onSave(amountMinor)}>
-        <Check size={18} /> Settle {amountMinor > 0 ? formatMoney(amountMinor) : ''}
+      ) : (
+        <>
+          <div className="card form-card">
+            <span className="muted small">Amount you paid for this month's bill</span>
+            <div className="amount-field">
+              <span className="rupee">₹</span>
+              <input className="amount bare" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+            </div>
+            <span className="muted small">Card spend this month: {formatMoney(spent)}</span>
+          </div>
+          <button className="primary" disabled={amountMinor <= 0} onClick={() => onSettle(amountMinor)}>
+            <Check size={18} /> Settle {amountMinor > 0 ? formatMoney(amountMinor) : ''}
+          </button>
+        </>
+      )}
+
+      <button className="danger" onClick={onDelete}>
+        <Trash2 size={16} /> Delete card
       </button>
     </Sheet>
   );
 }
 
-function formatCardNumber(digits: string): string {
-  return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
-}
-
-// Only the last four digits are saved. The network is read from the leading digits.
+// Only the card name, the holder, and the due day are asked for. No card number.
 function AddCardSheet({ onClose }: { onClose: () => void }) {
   const { dispatch } = useStore();
-  const [bank, setBank] = useState('');
-  const [digits, setDigits] = useState('');
+  const [name, setName] = useState('');
   const [owner, setOwner] = useState<PersonId>('anup');
   const [dueDay, setDueDay] = useState('');
 
-  const network = detectNetwork(digits);
   const due = Number(dueDay);
-  const valid = bank.trim() && digits.length >= 12 && (!dueDay || (due >= 1 && due <= 31));
+  const valid = name.trim() && (!dueDay || (due >= 1 && due <= 31));
 
   const save = () => {
     if (!valid) return;
@@ -219,42 +233,20 @@ function AddCardSheet({ onClose }: { onClose: () => void }) {
       source: {
         id: newId(),
         kind: 'credit_card',
-        label: bank.trim(),
+        label: name.trim(),
         owner,
-        last4: digits.slice(-4),
-        network,
         dueDay: dueDay ? due : undefined,
       },
     });
     onClose();
   };
 
-  const preview: Source = {
-    id: 'preview',
-    kind: 'credit_card',
-    label: bank.trim() || 'Bank name',
-    owner,
-    last4: digits.slice(-4) || undefined,
-    network,
-  };
-
   return (
     <Sheet title="Add credit card" onClose={onClose}>
-      <CardVisual source={preview} spent={0} />
+      <CardVisual source={{ id: 'preview', kind: 'credit_card', label: name.trim() || 'Card name', owner }} spent={0} />
       <div className="card form-card">
         <span className="muted small">Card name</span>
-        <input className="bare" placeholder="HDFC Millennia, Axis Rewards…" value={bank} onChange={(e) => setBank(e.target.value)} autoFocus />
-      </div>
-      <div className="card form-card">
-        <span className="muted small">Card number</span>
-        <input
-          className="bare"
-          inputMode="numeric"
-          placeholder="1234 5678 9012 3456"
-          value={formatCardNumber(digits)}
-          onChange={(e) => setDigits(e.target.value.replace(/\D/g, '').slice(0, 19))}
-        />
-        <span className="muted small">Only the last 4 digits are saved.</span>
+        <input className="bare" placeholder="HDFC Millennia, Axis Rewards…" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </div>
       <div className="row">
         <label className="field">
@@ -292,6 +284,13 @@ function FixedBills() {
   const pendingTotal = bills.filter((b) => !paymentFor(b.id)).reduce((sum, b) => sum + b.expectedMinor, 0);
   const paidCount = bills.filter((b) => paymentFor(b.id)).length;
 
+  const removeBill = (bill: Bill) => {
+    if (!window.confirm(`Delete ${bill.name}? Past payments stay in your history.`)) return;
+    const paymentIds = data.billPayments.filter((p) => p.billId === bill.id).map((p) => p.id);
+    dispatch({ type: 'deleteBill', id: bill.id, paymentIds });
+    setDetail(null);
+  };
+
   return (
     <>
       <div className="split-head">
@@ -323,7 +322,9 @@ function FixedBills() {
           const status = payment ? 'paid' : overdue ? 'overdue' : 'pending';
           return (
             <div key={b.id} className="card bill-row tap-row" role="button" onClick={() => setDetail(b)}>
-              <Tile icon={Icon} color={BILL_COLOR} />
+              <span className="bill-icon">
+                <Icon size={20} />
+              </span>
               <div className="cat-meta">
                 <span className="strong">{b.name}</span>
                 <span className="muted small">
@@ -371,6 +372,7 @@ function FixedBills() {
             if (p) dispatch({ type: 'unpayBill', paymentId: p.id, expenseId: p.expenseId });
             setDetail(null);
           }}
+          onDelete={() => removeBill(detail)}
         />
       )}
 
@@ -383,9 +385,10 @@ function FixedBills() {
             const expenseId = newId();
             const source = data.sources.find((s) => s.id === paying.sourceId);
             const mode = source ? MODES_FOR_KIND[source.kind][0] : 'bank_transfer';
+            const payment: BillPayment = { id: newId(), billId: paying.id, month, expenseId, billName: paying.name };
             dispatch({
               type: 'payBill',
-              payment: { id: newId(), billId: paying.id, month, expenseId },
+              payment,
               expense: {
                 id: expenseId,
                 amountMinor,
@@ -406,8 +409,146 @@ function FixedBills() {
   );
 }
 
+// Shows one fixed bill. A paid bill can be marked unpaid again. Delete removes the bill itself.
+function BillDetail({
+  bill,
+  payment,
+  amountMinor,
+  sourceName,
+  onClose,
+  onPay,
+  onUnpay,
+  onDelete,
+}: {
+  bill: Bill;
+  payment: BillPayment | undefined;
+  amountMinor: number;
+  sourceName: string;
+  onClose: () => void;
+  onPay: () => void;
+  onUnpay: () => void;
+  onDelete: () => void;
+}) {
+  const Icon = billIcon(bill.name);
+  return (
+    <Sheet title={bill.name} onClose={onClose}>
+      <div className="card bill-detail">
+        <span className="bill-icon">
+          <Icon size={22} />
+        </span>
+        <span className="big-num">{formatMoney(amountMinor)}</span>
+        <span className={`status status-${payment ? 'paid' : 'pending'}`}>{payment ? 'Paid this month' : 'Not paid yet'}</span>
+        <span className="muted small">
+          Due {bill.dueDay} · {PEOPLE[bill.payer]} · {sourceName}
+        </span>
+      </div>
+      {payment ? (
+        <button className="primary" onClick={onUnpay}>
+          Mark as unpaid
+        </button>
+      ) : (
+        <button className="primary" onClick={onPay}>
+          <Check size={18} /> Mark as paid
+        </button>
+      )}
+      <button className="danger" onClick={onDelete}>
+        <Trash2 size={16} /> Delete bill
+      </button>
+    </Sheet>
+  );
+}
+
+// Month-by-month record: what was spent, which card bills were settled, and which fixed bills were paid.
+function History() {
+  const { data } = useStore();
+
+  const months = [
+    ...new Set([
+      ...data.expenses.map((e) => monthKey(e.date)),
+      ...data.settlements.map((s) => s.month),
+      ...data.billPayments.map((p) => p.month),
+    ]),
+  ]
+    .sort()
+    .reverse();
+
+  if (months.length === 0) return <p className="muted empty">Nothing logged yet. Your monthly history appears here.</p>;
+
+  return (
+    <div className="list-stack">
+      {months.map((m) => (
+        <MonthRecord key={m} month={m} />
+      ))}
+    </div>
+  );
+}
+
+function MonthRecord({ month }: { month: string }) {
+  const { data } = useStore();
+  const [year, mon] = month.split('-').map(Number);
+  const label = new Date(year, mon - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  const spent = totalOf(data.expenses.filter((e) => monthKey(e.date) === month));
+  const settlements = data.settlements.filter((s) => s.month === month);
+  const payments = data.billPayments.filter((p) => p.month === month);
+  const cardTotal = settlements.reduce((sum, s) => sum + s.amountMinor, 0);
+  const fixedTotal = payments.reduce((sum, p) => sum + amountOf(data.expenses, p.expenseId), 0);
+
+  const cardName = (s: Settlement) => s.cardLabel ?? data.sources.find((x) => x.id === s.sourceId)?.label ?? 'Removed card';
+  const billName = (p: BillPayment) => p.billName ?? data.bills.find((b) => b.id === p.billId)?.name ?? 'Removed bill';
+
+  return (
+    <section className="card history">
+      <div className="card-head">
+        <h3>{label}</h3>
+        <span className="strong">{formatMoney(spent)}</span>
+      </div>
+      <p className="muted small">
+        Card bills settled {formatMoney(cardTotal)} · Fixed bills paid {formatMoney(fixedTotal)}
+      </p>
+
+      {settlements.length > 0 && (
+        <>
+          <h3 className="sub-title">Card bills settled</h3>
+          {settlements.map((s) => (
+            <div key={s.id} className="line-row">
+              <span>
+                {cardName(s)}
+                <span className="muted small"> · {dayLabel(s.settledAt)}</span>
+              </span>
+              <span className="strong">{formatMoney(s.amountMinor)}</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {payments.length > 0 && (
+        <>
+          <h3 className="sub-title">Fixed bills paid</h3>
+          {payments.map((p) => {
+            const expense = data.expenses.find((e) => e.id === p.expenseId);
+            return (
+              <div key={p.id} className="line-row">
+                <span>
+                  {billName(p)}
+                  {expense && <span className="muted small"> · {dayLabel(expense.date)}</span>}
+                </span>
+                <span className="strong">{formatMoney(expense?.amountMinor ?? 0)}</span>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </section>
+  );
+}
+
 function amountOf(expenses: Expense[], expenseId: string): number {
   return expenses.find((e) => e.id === expenseId)?.amountMinor ?? 0;
+}
+
+function newBillFromForm(name: string, expected: number, day: number, payer: PersonId, sourceId: string): Bill {
+  return { id: newId(), name, expectedMinor: expected, dueDay: day, payer, sourceId: sourceId || null };
 }
 
 function BillForm({ onClose }: { onClose: () => void }) {
@@ -424,15 +565,7 @@ function BillForm({ onClose }: { onClose: () => void }) {
 
   const save = () => {
     if (!valid) return;
-    const bill: Bill = {
-      id: newId(),
-      name: name.trim(),
-      expectedMinor: expected,
-      dueDay: day,
-      payer,
-      sourceId: sourceId || null,
-    };
-    dispatch({ type: 'addBill', bill });
+    dispatch({ type: 'addBill', bill: newBillFromForm(name.trim(), expected, day, payer, sourceId) });
     onClose();
   };
 
@@ -479,48 +612,6 @@ function BillForm({ onClose }: { onClose: () => void }) {
       <button className="primary" disabled={!valid} onClick={save}>
         Save bill
       </button>
-    </Sheet>
-  );
-}
-
-// Shows one fixed bill. A paid bill can be marked unpaid again, which removes the expense it created.
-function BillDetail({
-  bill,
-  payment,
-  amountMinor,
-  sourceName,
-  onClose,
-  onPay,
-  onUnpay,
-}: {
-  bill: Bill;
-  payment: BillPayment | undefined;
-  amountMinor: number;
-  sourceName: string;
-  onClose: () => void;
-  onPay: () => void;
-  onUnpay: () => void;
-}) {
-  const Icon = billIcon(bill.name);
-  return (
-    <Sheet title={bill.name} onClose={onClose}>
-      <div className="card bill-detail">
-        <Tile icon={Icon} color={BILL_COLOR} />
-        <span className="big-num">{formatMoney(amountMinor)}</span>
-        <span className={`status status-${payment ? 'paid' : 'pending'}`}>{payment ? 'Paid this month' : 'Not paid yet'}</span>
-        <span className="muted small">
-          Due {bill.dueDay} · {PEOPLE[bill.payer]} · {sourceName}
-        </span>
-      </div>
-      {payment ? (
-        <button className="primary" onClick={onUnpay}>
-          Mark as unpaid
-        </button>
-      ) : (
-        <button className="primary" onClick={onPay}>
-          <Check size={18} /> Mark as paid
-        </button>
-      )}
     </Sheet>
   );
 }

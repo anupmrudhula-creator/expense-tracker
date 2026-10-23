@@ -6,7 +6,7 @@ import { totalOf } from '../lib/analysis';
 import { GROUP_COLOR, groupOf } from '../lib/categories';
 import { dayLabel, fiscalYear, fiscalYearOf, monthKey } from '../lib/dates';
 import type { Filters } from '../lib/filters';
-import { describeSource } from '../lib/labels';
+import { describeSourceId } from '../lib/labels';
 import { formatMoney } from '../lib/money';
 import { CATEGORY_ICON } from '../ui/meta';
 import { Donut } from '../ui/Donut';
@@ -125,14 +125,13 @@ export function Home({ onAdd, onDrill, onNavigate }: HomeProps) {
           <div className="list">
             {recent.map((e) => {
               const Icon = CATEGORY_ICON[e.category] ?? CATEGORY_ICON.Others;
-              const source = data.sources.find((s) => s.id === e.sourceId);
               return (
                 <div key={e.id} className="row-item">
                   <Tile icon={Icon} color={GROUP_COLOR[groupOf(e.category)]} size="sm" />
                   <div className="row-main">
                     <span className="strong">{e.merchant || e.category}</span>
                     <span className="muted small">
-                      {dayLabel(e.date)} · {describeSource(source)}
+                      {dayLabel(e.date)} · {describeSourceId(data.sources, e.sourceId)}
                     </span>
                   </div>
                   <span className="amount-out">−{formatMoney(e.amountMinor)}</span>

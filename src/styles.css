@@ -1669,6 +1669,19 @@ select:focus {
   box-shadow: var(--shadow);
 }
 
+/* ---------- Bill icon ---------- */
+
+.bill-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #3b82f61f;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
 /* ---------- Danger button and links ---------- */
 
 .danger {

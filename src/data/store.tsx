@@ -11,6 +11,8 @@ export type Action =
   | { type: 'updateExpense'; expense: Expense }
   | { type: 'deleteExpense'; id: string }
   | { type: 'addBill'; bill: Bill }
+  | { type: 'deleteBill'; id: string; paymentIds: string[] }
+  | { type: 'deleteSource'; id: string }
   | { type: 'payBill'; payment: BillPayment; expense: Expense }
   | { type: 'unpayBill'; paymentId: string; expenseId: string }
   | { type: 'addPlan'; plan: Plan }
@@ -49,6 +51,15 @@ async function apply(action: Action): Promise<void> {
       return deleteDoc(ref('expenses', action.id));
     case 'addBill':
       return setDoc(ref('bills', action.bill.id), clean(action.bill));
+    case 'deleteBill': {
+      // The bill and its monthly payment records go. The expenses already logged stay in history.
+      const batch = writeBatch(db);
+      batch.delete(ref('bills', action.id));
+      action.paymentIds.forEach((id) => batch.delete(ref('billPayments', id)));
+      return batch.commit();
+    }
+    case 'deleteSource':
+      return deleteDoc(ref('sources', action.id));
     case 'addPlan':
       return setDoc(ref('plans', action.plan.id), clean(action.plan));
     case 'addDeposit':

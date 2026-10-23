@@ -4,15 +4,11 @@ export type SourceKind = 'credit_card' | 'debit_card' | 'bank_account' | 'upi' |
 
 export type PayMode = 'credit_card' | 'debit_card' | 'upi' | 'bank_transfer' | 'cash';
 
-export type CardNetwork = 'visa' | 'mastercard' | 'rupay' | 'amex' | 'other';
-
 export interface Source {
   id: string;
   kind: SourceKind;
   label: string;
   owner: PersonId;
-  last4?: string;
-  network?: CardNetwork; // only for cards; the full card number is never stored
   dueDay?: number; // day of the month the card bill is due
 }
 
@@ -43,6 +39,7 @@ export interface BillPayment {
   billId: string;
   month: string; // YYYY-MM
   expenseId: string;
+  billName?: string; // kept so history still shows the name if the bill is deleted
 }
 
 export interface Plan {
@@ -71,6 +68,7 @@ export interface Settlement {
   amountMinor: number;
   enteredBy: PersonId;
   settledAt: string; // ISO timestamp
+  cardLabel?: string; // kept so history still shows the card if it's deleted
 }
 
 export interface AppData {

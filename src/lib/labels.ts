@@ -33,6 +33,12 @@ export const MODES_FOR_KIND: Record<SourceKind, PayMode[]> = {
 
 export function describeSource(source: Source | undefined): string {
   if (!source) return 'Cash';
-  const tail = source.last4 ? ` ••${source.last4}` : '';
-  return `${source.label}${tail}`;
+  return source.label;
+}
+
+// For a payment's card id. A card that was deleted shows as "Removed card", not as cash.
+export function describeSourceId(sources: Source[], sourceId: string | null): string {
+  if (!sourceId) return 'Cash';
+  const source = sources.find((s) => s.id === sourceId);
+  return source ? source.label : 'Removed card';
 }

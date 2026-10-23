@@ -8,6 +8,8 @@ export type Action =
   | { type: 'addSource'; source: Source }
   | { type: 'settleCard'; settlement: Settlement }
   | { type: 'addExpense'; expense: Expense }
+  | { type: 'updateExpense'; expense: Expense }
+  | { type: 'deleteExpense'; id: string }
   | { type: 'addBill'; bill: Bill }
   | { type: 'payBill'; payment: BillPayment; expense: Expense }
   | { type: 'unpayBill'; paymentId: string; expenseId: string }
@@ -41,6 +43,10 @@ async function apply(action: Action): Promise<void> {
       return setDoc(ref('settlements', action.settlement.id), clean(action.settlement));
     case 'addExpense':
       return setDoc(ref('expenses', action.expense.id), clean(action.expense));
+    case 'updateExpense':
+      return setDoc(ref('expenses', action.expense.id), clean(action.expense));
+    case 'deleteExpense':
+      return deleteDoc(ref('expenses', action.id));
     case 'addBill':
       return setDoc(ref('bills', action.bill.id), clean(action.bill));
     case 'addPlan':
@@ -110,6 +116,3 @@ export function useStore(): StoreValue {
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
-
-// Kept for any screen that wants to delete a single expense later.
-export const removeExpense = (id: string) => deleteDoc(ref('expenses', id));

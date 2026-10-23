@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import type { PersonId } from '../data/types';
 import { auth, db, HOUSEHOLD } from '../lib/firebase';
@@ -14,6 +14,7 @@ interface AuthValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<string | null>;
+  resetPassword: (email: string) => Promise<string>;
   logout: () => Promise<void>;
 }
 
@@ -61,11 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Always gives the same reply, so the form doesn't reveal which emails have accounts.
+  const resetPassword = async (email: string) => {
+    if (email.trim()) {
+      await sendPasswordResetEmail(auth, email.trim()).catch(() => undefined);
+    }
+    return 'If that email has an account, a reset link is on its way.';
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
 
-  return <AuthCtx.Provider value={{ user, loading, login, logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, loading, login, resetPassword, logout }}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth(): AuthValue {

@@ -1669,6 +1669,35 @@ select:focus {
   box-shadow: var(--shadow);
 }
 
+/* ---------- Danger button and links ---------- */
+
+.danger {
+  background: none;
+  border: 1.5px solid var(--danger);
+  color: var(--danger);
+  border-radius: 16px;
+  padding: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.danger:disabled {
+  opacity: 0.4;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 4px;
+  align-self: center;
+}
+
 /* ---------- Loading ---------- */
 
 .loading {

@@ -1,0 +1,15 @@
+# Dependencies and build output (rebuilt with npm install / npm run build)
+node_modules/
+dist/
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Local tool settings
+.claude/
+
+# Local env files (Firebase keys will go here later, never commit secrets)
+.env
+.env.*

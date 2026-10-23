@@ -20,10 +20,16 @@ service cloud.firestore {
     }
 
     // Expenses must be recorded as the person who is logged in, and the amount must be a sensible value.
+    // Either member can fix or delete an entry, but "entered by" never changes after it's created.
     match /households/main/expenses/{id} {
       allow read, delete: if member();
-      allow create, update: if member()
+      allow create: if member()
         && request.resource.data.enteredBy == me()
+        && request.resource.data.amountMinor is int
+        && request.resource.data.amountMinor > 0
+        && request.resource.data.amountMinor < 100000000;
+      allow update: if member()
+        && request.resource.data.enteredBy == resource.data.enteredBy
         && request.resource.data.amountMinor is int
         && request.resource.data.amountMinor > 0
         && request.resource.data.amountMinor < 100000000;

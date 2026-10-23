@@ -3,18 +3,25 @@ import { ArrowRight, Lock, Mail, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 export function Login() {
-  const { login } = useAuth();
+  const { login, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    setNotice('');
     const message = await login(email, password);
     setError(message ?? '');
     setBusy(false);
+  };
+
+  const forgot = async () => {
+    setError('');
+    setNotice(await resetPassword(email));
   };
 
   return (
@@ -52,8 +59,12 @@ export function Login() {
           />
         </label>
         {error && <p className="error">{error}</p>}
+        {notice && <p className="muted small center">{notice}</p>}
         <button className="primary" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={18} />
+        </button>
+        <button className="link" type="button" onClick={forgot} disabled={!email.trim()}>
+          Forgot password?
         </button>
       </form>
     </main>

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { EditExpense } from '../components/EditExpense';
 import { FilterSheet } from '../components/FilterSheet';
 import { Seg } from '../components/Seg';
 import { Analyse } from './Analyse';
 import { useStore } from '../data/store';
-import type { Source } from '../data/types';
+import type { Expense, Source } from '../data/types';
 import { totalOf } from '../lib/analysis';
 import { GROUP_COLOR, groupOf } from '../lib/categories';
 import { dayLabel } from '../lib/dates';
@@ -57,6 +58,7 @@ export function Payments({ filters, onChange }: PaymentsProps) {
   const { data } = useStore();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('list');
+  const [editing, setEditing] = useState<Expense | null>(null);
 
   const rows = useMemo(
     () => applyFilters(data.expenses, filters).sort((a, b) => b.date.localeCompare(a.date)),
@@ -127,7 +129,7 @@ export function Payments({ filters, onChange }: PaymentsProps) {
               // Card modes repeat what the card already says, so only bank-linked modes get shown.
               const showMode = source?.kind === 'bank_account' || source?.kind === 'upi';
               return (
-                <div key={e.id} className="row-item">
+                <div key={e.id} className="row-item tap-row" role="button" onClick={() => setEditing(e)}>
                   <Tile icon={CatIcon} color={GROUP_COLOR[groupOf(e.category)]} />
                   <div className="row-main">
                     <span className="strong">{e.merchant || e.category}</span>
@@ -145,6 +147,7 @@ export function Payments({ filters, onChange }: PaymentsProps) {
       ))}
 
       {open && <FilterSheet filters={filters} onChange={onChange} onClose={() => setOpen(false)} />}
+      {editing && <EditExpense expense={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }
